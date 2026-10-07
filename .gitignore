@@ -1,0 +1,30 @@
+# --- datasets (never commit raw/processed data) ---
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.zip
+*.mat
+*.h5
+*.hdf5
+*.parquet
+# tiny, explicitly approved synthetic demo sample
+!data/sample/
+!data/sample/*.csv
+
+# --- python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- node ---
+frontend/node_modules/
+frontend/dist/
+
+# --- misc ---
+.env
+.DS_Store
+outputs/.cache/

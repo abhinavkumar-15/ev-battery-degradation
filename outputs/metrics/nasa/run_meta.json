@@ -1,0 +1,150 @@
+{
+  "dataset": "nasa",
+  "is_demo": false,
+  "config": {
+    "eol_threshold_soh": 80.0,
+    "reference_mode": "rated",
+    "rated_capacity_ah": null,
+    "windows": [
+      10,
+      25,
+      50
+    ],
+    "warmup_cycles": 5,
+    "min_feature_coverage": 0.9,
+    "max_feature_corr": 0.99999,
+    "horizons": [
+      5,
+      10,
+      25,
+      50
+    ],
+    "headline_horizon": 10,
+    "seed": 42,
+    "inner_cv_splits": 3,
+    "interval_quantiles": [
+      0.05,
+      0.95
+    ]
+  },
+  "n_batteries": 4,
+  "batteries": [
+    "B0005",
+    "B0006",
+    "B0007",
+    "B0018"
+  ],
+  "n_cycles": 636,
+  "features": [
+    "cycle",
+    "soh",
+    "dis_duration_s",
+    "dis_v_mean",
+    "dis_v_min",
+    "dis_v_range",
+    "dis_i_mean",
+    "dis_i_max",
+    "dis_t_mean",
+    "dis_t_max",
+    "dis_t_range",
+    "dis_energy_wh",
+    "chg_duration_s",
+    "chg_i_mean",
+    "chg_t_mean",
+    "chg_energy_wh",
+    "coulombic_efficiency",
+    "re_ohm",
+    "rct_ohm",
+    "cum_discharge_throughput_ah",
+    "cum_charge_throughput_ah",
+    "cum_discharge_energy_wh",
+    "soh_slope_10",
+    "soh_slope_25",
+    "mean_temp_last_10",
+    "mean_temp_last_25",
+    "max_temp_last_25",
+    "mean_current_last_10",
+    "rolling_degradation_rate_10",
+    "rolling_degradation_rate_25",
+    "rolling_degradation_rate_50"
+  ],
+  "collinear_dropped": {
+    "capacity_ah": "soh",
+    "equivalent_full_cycles": "cum_discharge_throughput_ah"
+  },
+  "feature_docs": {
+    "cycle": "Discharge-cycle index (ageing clock).",
+    "soh": "Current State of Health (%), derived from measured capacity / reference capacity.",
+    "dis_duration_s": "Duration of the discharge step (s).",
+    "dis_v_mean": "Mean terminal voltage during discharge (V).",
+    "dis_v_min": "Minimum voltage during discharge (V) (~ cut-off voltage).",
+    "dis_v_range": "dis_v_max - dis_v_min (V).",
+    "dis_i_mean": "Mean |current| during discharge (A).",
+    "dis_i_max": "Peak |current| during discharge (A).",
+    "dis_t_mean": "Mean cell temperature during discharge (degC).",
+    "dis_t_max": "Peak cell temperature during discharge (degC).",
+    "dis_t_range": "dis_t_max - dis_t_min (degC).",
+    "dis_energy_wh": "Discharge energy, integral of |V*I| dt (Wh).",
+    "chg_duration_s": "Duration of the preceding charge step (s).",
+    "chg_i_mean": "Mean |current| during charge (A).",
+    "chg_t_mean": "Mean cell temperature during charge (degC).",
+    "chg_energy_wh": "Charge energy (Wh).",
+    "coulombic_efficiency": "discharge Ah / charge Ah of the paired steps (derived).",
+    "re_ohm": "Electrolyte resistance Re from impedance spectroscopy (Ohm), forward-filled from the latest earlier measurement.",
+    "rct_ohm": "Charge-transfer resistance Rct (Ohm), forward-filled from the latest earlier measurement.",
+    "cum_discharge_throughput_ah": "Cumulative discharged Ah up to and including cycle t.",
+    "cum_charge_throughput_ah": "Cumulative charged Ah up to and including cycle t.",
+    "cum_discharge_energy_wh": "Cumulative discharge energy (Wh) up to cycle t.",
+    "soh_slope_10": "Least-squares slope of SOH vs cycle over the last 10 cycles (%/cycle).",
+    "soh_slope_25": "Least-squares slope of SOH vs cycle over the last 25 cycles (%/cycle).",
+    "mean_temp_last_10": "Mean of dis_t_mean over the last 10 cycles.",
+    "mean_temp_last_25": "Mean of dis_t_mean over the last 25 cycles.",
+    "max_temp_last_25": "Max of dis_t_max over the last 25 cycles.",
+    "mean_current_last_10": "Mean of dis_i_mean over the last 10 cycles.",
+    "rolling_degradation_rate_10": "Trailing 10-cycle mean of the per-cycle degradation rate (%/cycle).",
+    "rolling_degradation_rate_25": "Trailing 25-cycle mean of the per-cycle degradation rate (%/cycle).",
+    "rolling_degradation_rate_50": "Trailing 50-cycle mean of the per-cycle degradation rate (%/cycle)."
+  },
+  "excluded_features": {
+    "capacity_slope_*": "Exactly proportional to soh_slope_* when the reference capacity is constant (perfect collinearity, no new information).",
+    "cycles_since_reference_point": "Identical to cycle - first_cycle; redundant with `cycle`.",
+    "depth_of_discharge": "All NASA cycles discharge to a fixed cut-off voltage, so DoD ~ capacity/rated ~ SOH; adds no independent information.",
+    "dis_t_rise": "With only per-step max/min stored, temperature rise == temperature range (identical column), so only dis_t_range is kept.",
+    "internal_resistance (DC)": "Not directly measured in NASA aging files; Re/Rct from impedance spectroscopy are used instead."
+  },
+  "validation": "Leave-one-battery-out (LOBO): each battery is held out entirely and scored by models trained on the others; hyper-parameters are tuned by GroupKFold-by-battery inside each training fold; features are trailing-window only. Random row splitting is never used (temporal leakage).",
+  "quality_report": {
+    "rows_in": 636,
+    "dropped": {},
+    "flags": {
+      "capacity_jumps(>10%)": 0
+    },
+    "rows_out": 636,
+    "batteries": [
+      "B0005",
+      "B0006",
+      "B0007",
+      "B0018"
+    ],
+    "missing_fraction": {
+      "re_ohm": 0.0896,
+      "rct_ohm": 0.0896
+    },
+    "reference": {
+      "mode": "rated",
+      "rated_capacity_ah": 2.0
+    }
+  },
+  "headline_horizon": 10,
+  "horizons": [
+    10
+  ],
+  "runtime_s": 11.4,
+  "versions": {
+    "sklearn": "1.9.1",
+    "python": "3.14.2",
+    "numpy": "2.5.3",
+    "pandas": "3.0.6"
+  },
+  "model_selection_note": "Best model is selected on the same LOBO scores that are reported, so those scores are mildly optimistic; see docs/methodology.md."
+}
