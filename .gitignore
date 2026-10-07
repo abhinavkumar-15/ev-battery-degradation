@@ -1,8 +1,6 @@
-# --- datasets (never commit raw/processed data) ---
+# --- datasets (never commit raw data) ---
 data/raw/*
-data/processed/*
 !data/raw/.gitkeep
-!data/processed/.gitkeep
 *.zip
 *.mat
 *.h5
