@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Activity, BarChart3, BookOpen, Brain, Database, Gauge, LineChart, Menu, Moon, Sun, X, Zap } from 'lucide-react'
+import { Activity, BarChart3, BookOpen, Brain, Calculator, Database, Gauge, LineChart, Menu, Moon, Sun, X, Zap } from 'lucide-react'
 import { useApp } from './context/AppContext.jsx'
 import { Badge, Button, ErrorBox, Loading, Select } from './components/ui.jsx'
 import Overview from './pages/Overview.jsx'
 import BatteryAnalysis from './pages/BatteryAnalysis.jsx'
 import Prediction from './pages/Prediction.jsx'
+import EvCalculator from './pages/EvCalculator.jsx'
 import Explainability from './pages/Explainability.jsx'
 import DatasetExplorer from './pages/DatasetExplorer.jsx'
 import ModelPerformance from './pages/ModelPerformance.jsx'
@@ -12,6 +13,7 @@ import Method from './pages/Method.jsx'
 
 const NAV = [
   { id: 'overview', label: 'Overview', icon: Gauge, C: Overview },
+  { id: 'ev-calculator', label: 'EV SOH Calculator', icon: Calculator, C: EvCalculator },
   { id: 'analysis', label: 'Battery Analysis', icon: LineChart, C: BatteryAnalysis },
   { id: 'prediction', label: 'Prediction', icon: Activity, C: Prediction },
   { id: 'explain', label: 'Explainability', icon: Brain, C: Explainability },
@@ -19,6 +21,7 @@ const NAV = [
   { id: 'performance', label: 'Model Performance', icon: BarChart3, C: ModelPerformance },
   { id: 'method', label: 'Method & Data', icon: BookOpen, C: Method },
 ]
+
 
 export default function App() {
   const { theme, setTheme, datasets, dataset, dsId, setDsId, batteries, battery, setBattery, error, reload } = useApp()

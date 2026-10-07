@@ -45,4 +45,7 @@ export const api = {
   performance: (dataset, horizon) => request(`/api/models/performance${qs({ dataset, horizon })}`),
   explain: (dataset) => request(`/api/explainability${qs({ dataset })}`),
   explainBattery: (id, dataset, cycle) => request(`/api/explainability/${id}${qs({ dataset, cycle })}`),
+  evPresets: () => request('/api/ev-calculator/presets'),
+  evPredict: (b) => post('/api/ev-calculator/predict', b),
 }
+

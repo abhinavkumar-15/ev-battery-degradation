@@ -15,3 +15,15 @@ class PredictRequest(BaseModel):
 
 class RulRequest(PredictRequest):
     eol_threshold: float | None = Field(None, gt=0, lt=100, description="End-of-life SOH threshold (%)")
+
+
+class EvCalculatorRequest(BaseModel):
+    capacity_kwh: float = Field(..., gt=0.5, le=250.0, description="Original Battery Capacity (kWh)")
+    odometer_km: float = Field(..., ge=0.0, le=1000000.0, description="Total kilometers driven / ridden so far")
+    age_years: float = Field(..., ge=0.05, le=30.0, description="Vehicle age in years")
+    fast_charge_pct: float = Field(default=15.0, ge=0.0, le=100.0, description="Percentage of fast (DC) charging vs slow (AC) charging")
+    ambient_temp_c: float = Field(default=25.0, ge=-20.0, le=60.0, description="Average ambient temperature in Celsius")
+    charge_limit_pct: float = Field(default=90.0, ge=50.0, le=100.0, description="Typical maximum state of charge target (%)")
+    efficiency_wh_km: float = Field(default=140.0, gt=10.0, le=500.0, description="Vehicle energy efficiency in Wh/km")
+    rated_range_km: float | None = Field(default=None, gt=0.0, le=2000.0, description="Original rated single-charge range in km")
+

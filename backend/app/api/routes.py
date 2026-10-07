@@ -3,8 +3,9 @@ from __future__ import annotations
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.app.schemas.models import PredictRequest, RulRequest
+from backend.app.schemas.models import EvCalculatorRequest, PredictRequest, RulRequest
 from backend.app.services import store
+from src.models.ev_calculator import PRESETS, predict_ev_health
 from src.explainability.shap_explain import local_explanation
 from src.models.predict import (
     ArtifactMissing,
@@ -361,3 +362,27 @@ def explain_battery(battery_id: str, dataset: str | None = None, cycle: int | No
                             "unit": "percentage points of SOH change over the horizon", **ex,
                             "interpretation": "Positive SHAP values push the model's predicted SOH change upward; negative values push it down (more loss). Associations, not causes."})
     return _guard(go)
+
+
+@router.get("/ev-calculator/presets")
+def get_ev_presets():
+    return {"presets": PRESETS}
+
+
+@router.post("/ev-calculator/predict")
+def predict_ev_calculator(req: EvCalculatorRequest):
+    try:
+        result = predict_ev_health(
+            capacity_kwh=req.capacity_kwh,
+            odometer_km=req.odometer_km,
+            age_years=req.age_years,
+            fast_charge_pct=req.fast_charge_pct,
+            ambient_temp_c=req.ambient_temp_c,
+            charge_limit_pct=req.charge_limit_pct,
+            efficiency_wh_km=req.efficiency_wh_km,
+            rated_range_km=req.rated_range_km,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(500, f"Error calculating EV battery health: {str(e)}")
+
