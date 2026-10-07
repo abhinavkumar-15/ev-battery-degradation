@@ -49,7 +49,6 @@ export default function App() {
             <div className="text-[11px] text-slate-500">Battery SOH &amp; RUL</div></div>
         </div>
         {nav}
-        <p className="mt-auto px-5 pb-4 text-[11px] leading-snug text-slate-500">Estimates from a statistical model — not guarantees. Lab data ≠ real-world EV behaviour.</p>
       </aside>
 
       {open && (
