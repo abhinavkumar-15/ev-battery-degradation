@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Activity, BarChart3, BookOpen, Brain, Database, Gauge, LineChart, Menu, Moon, Sun, X, Zap } from 'lucide-react'
 import { useApp } from './context/AppContext.jsx'
-import { Badge, ErrorBox, Loading, Select } from './components/ui.jsx'
+import { Badge, Button, ErrorBox, Loading, Select } from './components/ui.jsx'
 import Overview from './pages/Overview.jsx'
 import BatteryAnalysis from './pages/BatteryAnalysis.jsx'
 import Prediction from './pages/Prediction.jsx'
