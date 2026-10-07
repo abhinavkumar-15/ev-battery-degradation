@@ -1,9 +1,10 @@
 """Real-World EV Battery Health & SOH Calculator Engine.
 Uses a physics-informed empirical degradation model trained on realistic EV fleet parameters:
-- Calendar aging: Arrhenius temperature dependence + sqrt(t) SEI layer growth + high SOC dwell time
+- Calendar aging: Arrhenius temperature dependence + sqrt(t) SEI layer growth
 - Cycle aging: Equivalent Full Cycles (EFC) = (km * efficiency_wh_per_km) / (1000 * capacity_kwh)
+- Charging Frequency & Depth of Discharge (DOD): shallow cycles vs deep discharges
 - Fast-charging stress: C-rate thermal and mechanical stress factor
-- Depth of Discharge (DOD) and daily charge limit (80% vs 100%)
+- Ambient climate temperature operating extremes
 """
 from __future__ import annotations
 
@@ -93,6 +94,14 @@ PRESETS = [
     },
 ]
 
+CHARGE_FREQUENCY_CONFIG = {
+    "daily": {"dod": 0.28, "stress": 0.88, "numeric": 1.0, "label": "Daily (Every day - Shallow ~25-30% DOD)"},
+    "alternate_days": {"dod": 0.48, "stress": 1.00, "numeric": 2.0, "label": "Every Alternate Day (~45-50% DOD)"},
+    "twice_a_week": {"dod": 0.65, "stress": 1.15, "numeric": 3.0, "label": "2 Times a Week (~65% DOD)"},
+    "once_a_week": {"dod": 0.82, "stress": 1.30, "numeric": 4.0, "label": "Once a Week (~80% DOD - Deep cycles)"},
+    "when_empty": {"dod": 0.92, "stress": 1.48, "numeric": 5.0, "label": "Only When Nearly Empty (<15% left)"},
+}
+
 
 def physics_degradation_sim(
     capacity_kwh: float,
@@ -100,7 +109,7 @@ def physics_degradation_sim(
     age_years: float,
     fast_charge_pct: float = 15.0,
     ambient_temp_c: float = 25.0,
-    charge_limit_pct: float = 90.0,
+    charge_frequency: str = "daily",
     efficiency_wh_km: float = 140.0,
     noise: float = 0.0,
 ) -> dict:
@@ -109,23 +118,20 @@ def physics_degradation_sim(
     total_energy_kwh = (odometer_km * efficiency_wh_km) / 1000.0
     efc = total_energy_kwh / max(capacity_kwh, 1.0)
 
-    # 2. Calendar aging (% loss): SEI layer growth ~ t^0.75 modulated by temperature & high SOC
-    # Arrhenius temperature multiplier (reference 25°C)
+    # 2. Calendar aging (% loss): SEI layer growth ~ t^0.72 modulated by temperature
     temp_k = ambient_temp_c + 273.15
     ref_k = 298.15
     arrhenius = np.exp(0.045 * (temp_k - ref_k))
+    base_calendar_loss = 1.65 * (max(age_years, 0.05) ** 0.72) * arrhenius
 
-    # SOC dwell stress: holding battery above 85% accelerates calendar aging
-    soc_stress = 1.0 + max(0.0, (charge_limit_pct - 80.0) / 100.0) * 0.45
-    base_calendar_loss = 1.65 * (max(age_years, 0.05) ** 0.72) * arrhenius * soc_stress
+    # 3. Cycle aging (% loss): mechanical degradation modulated by Charging Frequency & Depth of Discharge
+    freq_cfg = CHARGE_FREQUENCY_CONFIG.get(charge_frequency, CHARGE_FREQUENCY_CONFIG["daily"])
+    dod_factor = (freq_cfg["dod"] ** 0.55) * freq_cfg["stress"]
+    base_cycle_loss = 0.022 * (efc ** 0.82) * dod_factor
 
-    # 3. Cycle aging (% loss): mechanical degradation & lithium plating ~ EFC^0.82
-    dod_factor = (charge_limit_pct / 100.0) ** 0.5
-    base_cycle_loss = 0.019 * (efc ** 0.84) * dod_factor
-
-    # 4. Fast charging penalty (% loss): high C-rate heating and localized plating
+    # 4. Fast charging penalty (% loss): high C-rate heating and localized lithium plating
     fast_ratio = max(0.0, min(100.0, fast_charge_pct)) / 100.0
-    fast_charge_loss = base_cycle_loss * (fast_ratio * 0.42 + (fast_ratio ** 2) * 0.35)
+    fast_charge_loss = base_cycle_loss * (fast_ratio * 0.45 + (fast_ratio ** 2) * 0.38)
 
     # 5. Temperature extremes on cycling (extra thermal stress in hot climates > 30°C)
     thermal_cycling_penalty = 0.0
@@ -151,13 +157,12 @@ def physics_degradation_sim(
     }
 
 
-def generate_training_data(n_samples: int = 15000) -> pd.DataFrame:
+def generate_training_data(n_samples: int = 18000) -> pd.DataFrame:
     """Generates synthetic EV fleet data across broad operating envelopes."""
     np.random.seed(42)
 
     capacity_kwh = np.random.uniform(3.0, 100.0, n_samples)
     age_years = np.random.uniform(0.1, 10.0, n_samples)
-    # Annual km between 4,000 and 35,000 km/year
     annual_km = np.random.uniform(4000.0, 35000.0, n_samples)
     odometer_km = annual_km * age_years + np.random.normal(0, 1500, n_samples)
     odometer_km = np.clip(odometer_km, 500.0, 300000.0)
@@ -165,9 +170,12 @@ def generate_training_data(n_samples: int = 15000) -> pd.DataFrame:
     fast_charge_pct = np.random.beta(2, 5, n_samples) * 100.0
     ambient_temp_c = np.random.normal(26.0, 8.0, n_samples)
     ambient_temp_c = np.clip(ambient_temp_c, 5.0, 45.0)
-    charge_limit_pct = np.random.choice([80.0, 85.0, 90.0, 95.0, 100.0], p=[0.25, 0.20, 0.25, 0.10, 0.20], size=n_samples)
 
-    # Efficiency (Wh/km): correlated with capacity (2-wheelers ~35Wh/km, large SUVs ~200Wh/km)
+    freq_choices = list(CHARGE_FREQUENCY_CONFIG.keys())
+    freq_probs = [0.35, 0.25, 0.20, 0.12, 0.08]
+    charge_frequency = np.random.choice(freq_choices, p=freq_probs, size=n_samples)
+    freq_numeric = [CHARGE_FREQUENCY_CONFIG[f]["numeric"] for f in charge_frequency]
+
     efficiency_wh_km = np.where(
         capacity_kwh < 10.0,
         np.random.uniform(30.0, 45.0, n_samples),
@@ -177,10 +185,10 @@ def generate_training_data(n_samples: int = 15000) -> pd.DataFrame:
     noise = np.random.normal(0, 0.35, n_samples)
 
     soh_list = []
-    for cap, odo, age, fc, temp, lim, eff, n in zip(
-        capacity_kwh, odometer_km, age_years, fast_charge_pct, ambient_temp_c, charge_limit_pct, efficiency_wh_km, noise
+    for cap, odo, age, fc, temp, freq, eff, n in zip(
+        capacity_kwh, odometer_km, age_years, fast_charge_pct, ambient_temp_c, charge_frequency, efficiency_wh_km, noise
     ):
-        res = physics_degradation_sim(cap, odo, age, fc, temp, lim, eff, n)
+        res = physics_degradation_sim(cap, odo, age, fc, temp, freq, eff, n)
         soh_list.append(res["soh"])
 
     df = pd.DataFrame({
@@ -189,7 +197,7 @@ def generate_training_data(n_samples: int = 15000) -> pd.DataFrame:
         "age_years": age_years,
         "fast_charge_pct": fast_charge_pct,
         "ambient_temp_c": ambient_temp_c,
-        "charge_limit_pct": charge_limit_pct,
+        "freq_numeric": freq_numeric,
         "efficiency_wh_km": efficiency_wh_km,
         "soh": soh_list,
     })
@@ -199,9 +207,9 @@ def generate_training_data(n_samples: int = 15000) -> pd.DataFrame:
 def train_and_save_model() -> None:
     """Trains the GBDT regressor and lower/upper quantile uncertainty bounds."""
     EV_CALCULATOR_DIR.mkdir(parents=True, exist_ok=True)
-    df = generate_training_data(18000)
+    df = generate_training_data(20000)
 
-    features = ["capacity_kwh", "odometer_km", "age_years", "fast_charge_pct", "ambient_temp_c", "charge_limit_pct", "efficiency_wh_km"]
+    features = ["capacity_kwh", "odometer_km", "age_years", "fast_charge_pct", "ambient_temp_c", "freq_numeric", "efficiency_wh_km"]
     X = df[features]
     y = df["soh"]
 
@@ -223,7 +231,7 @@ def train_and_save_model() -> None:
         "model_upper": model_upper,
         "features": features,
         "feature_importances": dict(zip(features, [round(float(v), 4) for v in model_mean.feature_importances_])),
-        "version": "1.0.0",
+        "version": "1.1.0",
     }
 
     out_file = EV_CALCULATOR_DIR / "model.joblib"
@@ -237,7 +245,7 @@ def predict_ev_health(
     age_years: float,
     fast_charge_pct: float = 15.0,
     ambient_temp_c: float = 25.0,
-    charge_limit_pct: float = 90.0,
+    charge_frequency: str = "daily",
     efficiency_wh_km: float = 140.0,
     rated_range_km: float | None = None,
 ) -> dict:
@@ -247,14 +255,17 @@ def predict_ev_health(
         train_and_save_model()
 
     artifact = joblib.load(model_path)
-    X = np.array([[capacity_kwh, odometer_km, age_years, fast_charge_pct, ambient_temp_c, charge_limit_pct, efficiency_wh_km]])
+    freq_cfg = CHARGE_FREQUENCY_CONFIG.get(charge_frequency, CHARGE_FREQUENCY_CONFIG["daily"])
+    freq_num = freq_cfg["numeric"]
+
+    X = np.array([[capacity_kwh, odometer_km, age_years, fast_charge_pct, ambient_temp_c, freq_num, efficiency_wh_km]])
 
     pred_mean = float(np.clip(artifact["model_mean"].predict(X)[0], 50.0, 100.0))
     pred_lower = float(np.clip(artifact["model_lower"].predict(X)[0], 48.0, pred_mean))
     pred_upper = float(np.clip(artifact["model_upper"].predict(X)[0], pred_mean, 100.0))
 
     # Detailed physics decomposition
-    phys = physics_degradation_sim(capacity_kwh, odometer_km, age_years, fast_charge_pct, ambient_temp_c, charge_limit_pct, efficiency_wh_km)
+    phys = physics_degradation_sim(capacity_kwh, odometer_km, age_years, fast_charge_pct, ambient_temp_c, charge_frequency, efficiency_wh_km)
 
     current_usable_kwh = float(round((pred_mean / 100.0) * capacity_kwh, 2))
     capacity_loss_kwh = float(round(capacity_kwh - current_usable_kwh, 2))
@@ -273,7 +284,6 @@ def predict_ev_health(
         years_to_eol = 0.0
         eol_status = "End of Life (EOL) Reached (<80% SOH)"
     else:
-        # Rate of degradation per 10k km
         deg_per_km = degradation_pct / max(odometer_km, 100.0)
         remaining_soh_to_lose = pred_mean - 80.0
         km_to_eol = float(round(remaining_soh_to_lose / max(deg_per_km, 0.00001), 0))
@@ -282,13 +292,13 @@ def predict_ev_health(
         years_to_eol = min(years_to_eol, 25.0)
         eol_status = "Healthy" if pred_mean >= 90.0 else "Good Condition" if pred_mean >= 85.0 else "Moderate Wear"
 
-    # Future SOH trajectory over kilometers (0 to max(200k, odo + 100k))
+    # Future SOH trajectory over kilometers
     max_sim_km = max(200000.0, odometer_km + 80000.0)
     sim_km_steps = np.linspace(0, max_sim_km, 25)
     trajectory = []
     for km in sim_km_steps:
         sim_age = (km / max(km_per_year, 1000.0))
-        sim_res = physics_degradation_sim(capacity_kwh, km, sim_age, fast_charge_pct, ambient_temp_c, charge_limit_pct, efficiency_wh_km)
+        sim_res = physics_degradation_sim(capacity_kwh, km, sim_age, fast_charge_pct, ambient_temp_c, charge_frequency, efficiency_wh_km)
         trajectory.append({
             "odometer_km": int(round(km)),
             "soh": sim_res["soh"],
@@ -296,22 +306,22 @@ def predict_ev_health(
             "range_km": round((sim_res["soh"] / 100.0) * rated_range_km, 1),
         })
 
-    # AI Battery Care Recommendations
+    # AI Battery Care Recommendations based on Charging Frequency, DCFC & Climate
     recommendations = []
+    if charge_frequency in ("once_a_week", "when_empty"):
+        recommendations.append({
+            "type": "frequency",
+            "title": "Adopt Frequent Shallow Charging",
+            "desc": f"Your current charging routine ({freq_cfg['label'].split('(')[0].strip()}) subjects cells to high Depth of Discharge (DOD > 80%). Topping up every 1-2 days instead of waiting till empty reduces mechanical electrode strain by ~25%.",
+            "impact": "High",
+        })
+
     if fast_charge_pct > 30.0:
         potential_gain = round((fast_charge_pct - 15.0) * 0.05 * (age_years ** 0.5), 1)
         recommendations.append({
             "type": "fast_charging",
             "title": "Reduce DC Fast Charging Frequency",
             "desc": f"Your fast-charge ratio ({fast_charge_pct:.0f}%) is high. Lowering DCFC to under 20% by using regular AC home/work charging could save ~{potential_gain}% SOH over vehicle life.",
-            "impact": "High",
-        })
-
-    if charge_limit_pct > 85.0:
-        recommendations.append({
-            "type": "charge_limit",
-            "title": "Cap Daily Charging to 80% - 85%",
-            "desc": "High state-of-charge dwell increases electrolyte oxidation. Setting a daily charge cap of 80% for local commutes and reserving 100% for road trips reduces calendar aging significantly.",
             "impact": "High",
         })
 
@@ -326,8 +336,8 @@ def predict_ev_health(
     if not recommendations:
         recommendations.append({
             "type": "general",
-            "title": "Excellent Battery Maintenance Habits!",
-            "desc": "Your charging patterns and ambient parameters are optimal for maximum lithium-ion cell longevity.",
+            "title": "Optimal Battery Care Habits!",
+            "desc": "Frequent shallow charging, low fast-charging ratio, and moderate climate conditions ensure maximum lithium-ion pack longevity.",
             "impact": "Optimal",
         })
 
@@ -362,5 +372,5 @@ def predict_ev_health(
 
 
 if __name__ == "__main__":
-    print("Training EV Calculator model...")
+    print("Training updated EV Calculator model with charge frequency...")
     train_and_save_model()

@@ -2,21 +2,15 @@ import { useEffect, useState } from 'react'
 import {
   Activity,
   AlertCircle,
-  BatteryCharging,
   BatteryMedium,
   CheckCircle2,
   Clock,
   Compass,
-  Flame,
-  Gauge,
-  Info,
   Lightbulb,
-  MapPin,
   RefreshCw,
   Route,
   Shield,
   Sparkles,
-  Thermometer,
   Zap,
 } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -24,31 +18,33 @@ import { Badge, Button, Card, Field, Loading, PageTitle } from '../components/ui
 import { api } from '../services/api.js'
 
 const CLIMATE_OPTIONS = [
-  { value: 10, label: 'Cold (< 15°C / 59°F)' },
+  { value: 10, label: 'Cold Climate (< 15°C / 59°F)' },
   { value: 24, label: 'Moderate / Temperate (20 - 25°C / 77°F)' },
   { value: 34, label: 'Warm / Tropical (30 - 35°C / 95°F)' },
   { value: 40, label: 'Hot / Desert (> 38°C / 100°F)' },
 ]
 
-const CHARGE_TARGET_OPTIONS = [
-  { value: 80, label: '80% (Recommended for longevity)' },
-  { value: 90, label: '90% (Balanced)' },
-  { value: 100, label: '100% (Daily full charge)' },
+const CHARGE_FREQUENCY_OPTIONS = [
+  { value: 'daily', label: 'Daily (Every day - Shallow ~25-30% DOD top-ups)' },
+  { value: 'alternate_days', label: 'Every Alternate Day (3-4 times a week)' },
+  { value: 'twice_a_week', label: '2 Times a Week (~65% DOD)' },
+  { value: 'once_a_week', label: 'Once a Week (~80% DOD - Deep cycles)' },
+  { value: 'when_empty', label: 'Only When Nearly Empty (<15% left)' },
 ]
 
 export default function EvCalculator() {
   const [presets, setPresets] = useState([])
   const [selectedPresetId, setSelectedPresetId] = useState('tesla_model_3')
 
-  // Form State
-  const [capacityKwh, setCapacityKwh] = useState(60.0)
-  const [odometerKm, setOdometerKm] = useState(45000)
-  const [ageYears, setAgeYears] = useState(3.0)
-  const [fastChargePct, setFastChargePct] = useState(20)
-  const [ambientTempC, setAmbientTempC] = useState(24)
-  const [chargeLimitPct, setChargeLimitPct] = useState(90)
-  const [efficiencyWhKm, setEfficiencyWhKm] = useState(145)
-  const [ratedRangeKm, setRatedRangeKm] = useState(491)
+  // Form State (Strings for effortless typing & backspacing)
+  const [capacityKwh, setCapacityKwh] = useState('60')
+  const [odometerKm, setOdometerKm] = useState('45000')
+  const [ageYears, setAgeYears] = useState('3.0')
+  const [fastChargePct, setFastChargePct] = useState('20')
+  const [ambientTempC, setAmbientTempC] = useState('24')
+  const [chargeFrequency, setChargeFrequency] = useState('daily')
+  const [efficiencyWhKm, setEfficiencyWhKm] = useState('145')
+  const [ratedRangeKm, setRatedRangeKm] = useState('491')
 
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -63,33 +59,44 @@ export default function EvCalculator() {
           applyPreset(res.presets[0])
         }
       })
-      .catch((err) => console.error('Failed to load presets:', err))
+      .catch((err) => {
+        console.warn('Presets endpoint loading, using local defaults:', err)
+      })
   }, [])
 
   const applyPreset = (p) => {
     setSelectedPresetId(p.id)
-    setCapacityKwh(p.capacity_kwh)
-    setEfficiencyWhKm(p.efficiency_wh_km)
-    setRatedRangeKm(p.rated_range_km)
+    setCapacityKwh(String(p.capacity_kwh))
+    setEfficiencyWhKm(String(p.efficiency_wh_km))
+    setRatedRangeKm(String(p.rated_range_km))
   }
 
   const handleCalculate = async () => {
     setLoading(true)
     setError(null)
+    const cap = parseFloat(capacityKwh) || 60.0
+    const odo = parseFloat(odometerKm) || 45000.0
+    const age = parseFloat(ageYears) || 3.0
+    const fc = parseFloat(fastChargePct) || 20.0
+    const temp = parseFloat(ambientTempC) || 24.0
+    const eff = parseFloat(efficiencyWhKm) || 145.0
+    const range = parseFloat(ratedRangeKm) || (cap * 1000.0) / eff
+
     try {
       const data = await api.evPredict({
-        capacity_kwh: Number(capacityKwh),
-        odometer_km: Number(odometerKm),
-        age_years: Number(ageYears),
-        fast_charge_pct: Number(fastChargePct),
-        ambient_temp_c: Number(ambientTempC),
-        charge_limit_pct: Number(chargeLimitPct),
-        efficiency_wh_km: Number(efficiencyWhKm),
-        rated_range_km: Number(ratedRangeKm),
+        capacity_kwh: cap,
+        odometer_km: odo,
+        age_years: age,
+        fast_charge_pct: fc,
+        ambient_temp_c: temp,
+        charge_frequency: chargeFrequency,
+        efficiency_wh_km: eff,
+        rated_range_km: range,
       })
       setResult(data)
     } catch (e) {
-      setError(e?.message || 'Failed to calculate EV battery health.')
+      console.error(e)
+      setError(e?.message || 'Connecting to calculation engine…')
     } finally {
       setLoading(false)
     }
@@ -99,7 +106,7 @@ export default function EvCalculator() {
   useEffect(() => {
     handleCalculate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [chargeFrequency, ambientTempC])
 
   const breakdownData = result?.breakdown ? [
     { name: 'Calendar Aging', value: result.breakdown.calendar_loss_pct, color: '#38bdf8' },
@@ -112,11 +119,11 @@ export default function EvCalculator() {
     <div className="mx-auto max-w-7xl space-y-6">
       <PageTitle
         title="Real-World EV SOH & Range Calculator"
-        subtitle="Predict your vehicle's State of Health (SOH), remaining battery capacity, real-world range, and expected lifespan to 80% EOL using your driving and charging habits."
+        subtitle="Predict your vehicle's State of Health (SOH), remaining battery capacity, real-world range, and expected lifespan to 80% EOL based on your driving and charging habits."
       />
 
       {/* Preset vehicle selector */}
-      <Card title="Quick Vehicle Presets" subtitle="Select your EV model or customize pack parameters manually below:">
+      <Card title="Quick Vehicle Presets" subtitle="Select a preset EV model or customize pack parameters manually:">
         <div className="flex flex-wrap gap-2 pt-1">
           {presets.map((p) => (
             <button
@@ -157,16 +164,21 @@ export default function EvCalculator() {
               {/* Odometer */}
               <div>
                 <div className="flex items-center justify-between text-xs font-medium text-slate-700 dark:text-slate-300">
-                  <span className="flex items-center gap-1.5"><Route className="h-3.5 w-3.5 text-slate-400" /> Total Odometer Distance</span>
-                  <span className="font-semibold text-brand-600 dark:text-brand-400">{Number(odometerKm).toLocaleString()} km</span>
+                  <span className="flex items-center gap-1.5"><Route className="h-3.5 w-3.5 text-slate-400" /> Total Odometer Distance (km)</span>
+                  <input
+                    type="number"
+                    value={odometerKm}
+                    onChange={(e) => setOdometerKm(e.target.value)}
+                    className="w-24 rounded border border-slate-300 bg-white px-2 py-0.5 text-right font-semibold text-brand-600 dark:border-slate-700 dark:bg-slate-950 dark:text-brand-400"
+                  />
                 </div>
                 <input
                   type="range"
                   min="500"
                   max="250000"
                   step="1000"
-                  value={odometerKm}
-                  onChange={(e) => setOdometerKm(Number(e.target.value))}
+                  value={parseFloat(odometerKm) || 0}
+                  onChange={(e) => setOdometerKm(e.target.value)}
                   className="mt-2 w-full accent-brand-600"
                 />
                 <div className="flex justify-between text-[10px] text-slate-400">
@@ -179,16 +191,22 @@ export default function EvCalculator() {
               {/* Age */}
               <div>
                 <div className="flex items-center justify-between text-xs font-medium text-slate-700 dark:text-slate-300">
-                  <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-slate-400" /> Vehicle Age</span>
-                  <span className="font-semibold text-brand-600 dark:text-brand-400">{ageYears} Years ({Math.round(ageYears * 12)} months)</span>
+                  <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-slate-400" /> Vehicle Age (Years)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={ageYears}
+                    onChange={(e) => setAgeYears(e.target.value)}
+                    className="w-20 rounded border border-slate-300 bg-white px-2 py-0.5 text-right font-semibold text-brand-600 dark:border-slate-700 dark:bg-slate-950 dark:text-brand-400"
+                  />
                 </div>
                 <input
                   type="range"
                   min="0.2"
                   max="12"
                   step="0.2"
-                  value={ageYears}
-                  onChange={(e) => setAgeYears(Number(e.target.value))}
+                  value={parseFloat(ageYears) || 0}
+                  onChange={(e) => setAgeYears(e.target.value)}
                   className="mt-2 w-full accent-brand-600"
                 />
                 <div className="flex justify-between text-[10px] text-slate-400">
@@ -197,6 +215,19 @@ export default function EvCalculator() {
                   <span>12 yrs</span>
                 </div>
               </div>
+
+              {/* Charging Frequency */}
+              <Field label="Charging Frequency" hint="Frequent shallow charging (low Depth of Discharge) reduces mechanical crystal strain.">
+                <select
+                  value={chargeFrequency}
+                  onChange={(e) => setChargeFrequency(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                >
+                  {CHARGE_FREQUENCY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </Field>
 
               {/* Fast Charging % */}
               <div>
@@ -209,8 +240,8 @@ export default function EvCalculator() {
                   min="0"
                   max="100"
                   step="5"
-                  value={fastChargePct}
-                  onChange={(e) => setFastChargePct(Number(e.target.value))}
+                  value={parseFloat(fastChargePct) || 0}
+                  onChange={(e) => setFastChargePct(e.target.value)}
                   className="mt-2 w-full accent-amber-500"
                 />
                 <div className="flex justify-between text-[10px] text-slate-400">
@@ -220,24 +251,11 @@ export default function EvCalculator() {
                 </div>
               </div>
 
-              {/* Charge Target Limit */}
-              <Field label="Daily Charging Target" hint="Restricting regular charging to 80% slows calendar degradation significantly.">
-                <select
-                  value={chargeLimitPct}
-                  onChange={(e) => setChargeLimitPct(Number(e.target.value))}
-                  className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                >
-                  {CHARGE_TARGET_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </Field>
-
               {/* Climate */}
-              <Field label="Operating Climate / Temperature">
+              <Field label="Operating Climate / Ambient Temperature">
                 <select
                   value={ambientTempC}
-                  onChange={(e) => setAmbientTempC(Number(e.target.value))}
+                  onChange={(e) => setAmbientTempC(e.target.value)}
                   className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 >
                   {CLIMATE_OPTIONS.map((o) => (
@@ -249,23 +267,25 @@ export default function EvCalculator() {
               {/* Original Pack Size & Rated Range */}
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Pack Capacity (kWh)</label>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Original Capacity (kWh)</label>
                   <input
-                    type="number"
-                    step="0.5"
+                    type="text"
+                    inputMode="decimal"
                     value={capacityKwh}
-                    onChange={(e) => { setCapacityKwh(Number(e.target.value)); setSelectedPresetId('custom') }}
+                    onChange={(e) => { setCapacityKwh(e.target.value); setSelectedPresetId('custom') }}
                     className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    placeholder="e.g. 60"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Original Rated Range (km)</label>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Rated Range (km)</label>
                   <input
-                    type="number"
-                    step="5"
+                    type="text"
+                    inputMode="decimal"
                     value={ratedRangeKm}
-                    onChange={(e) => { setRatedRangeKm(Number(e.target.value)); setSelectedPresetId('custom') }}
+                    onChange={(e) => { setRatedRangeKm(e.target.value); setSelectedPresetId('custom') }}
                     className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    placeholder="e.g. 490"
                   />
                 </div>
               </div>
@@ -282,8 +302,8 @@ export default function EvCalculator() {
         {/* Right Column: Prediction Metrics & Charts */}
         <div className="space-y-6 lg:col-span-7">
           {error && (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">
-              <AlertCircle className="mb-1 inline h-4 w-4 mr-1.5" />
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              <AlertCircle className="mb-0.5 inline h-4 w-4 mr-1.5" />
               {error}
             </div>
           )}

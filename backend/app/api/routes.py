@@ -378,7 +378,7 @@ def predict_ev_calculator(req: EvCalculatorRequest):
             age_years=req.age_years,
             fast_charge_pct=req.fast_charge_pct,
             ambient_temp_c=req.ambient_temp_c,
-            charge_limit_pct=req.charge_limit_pct,
+            charge_frequency=req.charge_frequency,
             efficiency_wh_km=req.efficiency_wh_km,
             rated_range_km=req.rated_range_km,
         )
