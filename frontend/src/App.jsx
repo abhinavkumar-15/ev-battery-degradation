@@ -21,7 +21,7 @@ const NAV = [
 ]
 
 export default function App() {
-  const { theme, setTheme, datasets, dataset, dsId, setDsId, batteries, battery, setBattery, error } = useApp()
+  const { theme, setTheme, datasets, dataset, dsId, setDsId, batteries, battery, setBattery, error, reload } = useApp()
   const [page, setPage] = useState(() => location.hash.slice(1) || 'overview')
   const [open, setOpen] = useState(false)
   const go = (id) => { setPage(id); location.hash = id; setOpen(false) }
@@ -83,8 +83,13 @@ export default function App() {
 
         <main className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-6">
           {error ? (
-            <div className="mx-auto max-w-xl pt-10"><ErrorBox error={error} />
-              <p className="mt-3 text-xs text-slate-500">Start the API with <code>uvicorn backend.app.main:app --port 8000</code> from the repo root and make sure a model has been trained (<code>python -m src.pipeline --dataset demo</code>).</p></div>
+            <div className="mx-auto max-w-xl pt-10">
+              <ErrorBox error={error} />
+              <div className="mt-4 flex items-center gap-3">
+                <Button onClick={reload}>Retry Connection</Button>
+                <p className="text-xs text-slate-500">Make sure the backend is running at port 8000.</p>
+              </div>
+            </div>
           ) : !datasets ? <Loading label="Connecting to API…" /> : datasets.length === 0 ? (
             <div className="mx-auto max-w-xl pt-10 text-sm">No trained models found. Run the training pipeline first (see README).</div>
           ) : !dataset || !battery ? <Loading /> : <Page key={`${dsId}-${page}`} />}

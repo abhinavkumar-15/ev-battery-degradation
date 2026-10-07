@@ -1,5 +1,6 @@
 // Thin API client. Every number shown in the UI comes from these endpoints.
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+const rawBase = import.meta.env.VITE_API_BASE ?? ''
+const BASE = rawBase.replace(/\/+$/, '')
 
 async function request(path, opts) {
   let res

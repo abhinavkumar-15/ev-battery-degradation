@@ -21,3 +21,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+
+
+@app.get("/")
+@app.head("/")
+def root():
+    return {
+        "title": "VoltGuard AI API",
+        "status": "online",
+        "docs": "/docs",
+        "health": "/api/health",
+        "datasets": "/api/datasets",
+    }

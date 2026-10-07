@@ -12,22 +12,38 @@ export function AppProvider({ children }) {
   const [battery, setBattery] = useState(null)
   const [error, setError] = useState(null)
 
+  const [refreshKey, setRefreshKey] = useState(0)
+  const reload = () => { setError(null); setRefreshKey((k) => k + 1) }
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
     localStorage.setItem('vg-theme', theme)
   }, [theme])
 
   useEffect(() => {
-    api.datasets().then((r) => { setDatasets(r.datasets); setDsId(r.datasets[0]?.id ?? null) }).catch(setError)
-  }, [])
+    api.datasets()
+      .then((r) => {
+        setError(null)
+        setDatasets(r.datasets)
+        setDsId((curr) => curr && r.datasets.some((d) => d.id === curr) ? curr : (r.datasets[0]?.id ?? null))
+      })
+      .catch((e) => setError(e))
+  }, [refreshKey])
 
   useEffect(() => {
     if (!dsId) return
-    setBatteries([]); setBattery(null)
-    api.batteries(dsId).then((r) => { setBatteries(r.batteries); setBattery(r.batteries[0]?.id ?? null) }).catch(setError)
-  }, [dsId])
+    setBatteries([])
+    setBattery(null)
+    api.batteries(dsId)
+      .then((r) => {
+        setError(null)
+        setBatteries(r.batteries)
+        setBattery(r.batteries[0]?.id ?? null)
+      })
+      .catch((e) => setError(e))
+  }, [dsId, refreshKey])
 
   const dataset = useMemo(() => datasets?.find((d) => d.id === dsId) ?? null, [datasets, dsId])
-  const value = { theme, setTheme, datasets, dataset, dsId, setDsId, batteries, battery, setBattery, error }
+  const value = { theme, setTheme, datasets, dataset, dsId, setDsId, batteries, battery, setBattery, error, reload }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
