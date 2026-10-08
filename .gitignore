@@ -32,5 +32,5 @@ outputs/.cache/
 *.doc
 doc_dump.txt
 scripts/
-docs/
 outputs/screenshots/
+outputs/figures/
