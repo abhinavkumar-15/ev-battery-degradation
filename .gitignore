@@ -26,3 +26,11 @@ frontend/dist/
 .env
 .DS_Store
 outputs/.cache/
+
+# --- documentation & scratch scripts ---
+*.docx
+*.doc
+doc_dump.txt
+scripts/
+docs/
+outputs/screenshots/
